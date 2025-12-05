@@ -1,0 +1,92 @@
+name: Test Signing
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [master]
+
+jobs:
+  test-sign:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: 'temurin'
+
+      - name: Create test files (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p test
+
+          # PowerShell script (.ps1)
+          cat > test/test.ps1 << 'EOF'
+          # Test PowerShell Script
+          Write-Host "Hello World"
+          Get-Date
+          EOF
+
+          # JAR file (.jar)
+          mkdir -p jar_content/META-INF
+          echo "Manifest-Version: 1.0" > jar_content/META-INF/MANIFEST.MF
+          echo "Created-By: Test" >> jar_content/META-INF/MANIFEST.MF
+          jar cf test/test.jar -C jar_content .
+
+          echo "=== Test files created ==="
+          ls -la test/
+
+      - name: Create test files (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path test | Out-Null
+
+          # PowerShell script (.ps1)
+          @"
+          # Test PowerShell Script
+          Write-Host "Hello World"
+          Get-Date
+          "@ | Out-File -FilePath test/test.ps1 -Encoding UTF8
+
+          # JAR file (.jar)
+          New-Item -ItemType Directory -Force -Path jar_content/META-INF | Out-Null
+          "Manifest-Version: 1.0" | Out-File -FilePath jar_content/META-INF/MANIFEST.MF -Encoding UTF8
+          "Created-By: Test" | Out-File -FilePath jar_content/META-INF/MANIFEST.MF -Append -Encoding UTF8
+          jar cf test/test.jar -C jar_content .
+
+          Write-Host "=== Test files created ==="
+          Get-ChildItem test/
+
+      - name: Sign files
+        uses: ./
+        with:
+          path: ./test
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-keyvault-uri: ${{ secrets.AZURE_KEYVAULT_URI }}
+          azure-keyvault-cert-name: ${{ secrets.AZURE_KEYVAULT_CERT_NAME }}
+          azure-keyvault-certchain: ${{ secrets.AZURE_KEYVAULT_CERTCHAIN }}
+
+      - name: Display results (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Signed files ==="
+          ls -la ./test/
+          echo "✅ Test sign success on ${{ runner.os }}!"
+
+      - name: Display results (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Write-Host "=== Signed files ==="
+          Get-ChildItem ./test/
+          Write-Host "✅ Test sign success on ${{ runner.os }}!"
