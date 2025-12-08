@@ -1,0 +1,172 @@
+name: 'Sign Windows files and JARs'
+description: 'Sign Windows files (.exe, .dll, .cat, .sys, .msi, .ps1, .jar) using Azure Key Vault and Jsign'
+author: 'Espressif Systems'
+
+branding:
+  icon: 'lock'
+  color: 'blue'
+
+inputs:
+  path:
+    description: 'Path to file or directory containing files to sign'
+    required: true
+  digest-algorithm:
+    description: 'Digest algorithm to use (SHA-256, SHA-384, SHA-512)'
+    required: false
+    default: 'SHA-256'
+  azure-client-id:
+    description: 'Azure Service Principal Client ID'
+    required: true
+  azure-client-secret:
+    description: 'Azure Service Principal Client Secret'
+    required: true
+  azure-tenant-id:
+    description: 'Azure Tenant ID'
+    required: true
+  azure-keyvault-uri:
+    description: 'Azure Key Vault URI'
+    required: true
+  azure-keyvault-cert-name:
+    description: 'Certificate name in Key Vault'
+    required: true
+  azure-keyvault-certchain:
+    description: 'Certificate chain (.p7b) content for JAR signing'
+    required: false
+    default: ''
+  jsign-version:
+    description: 'Jsign version to use'
+    required: false
+    default: '7.4'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'temurin'
+
+    - name: Download Jsign (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        curl -sL "https://github.com/ebourg/jsign/releases/download/${{ inputs.jsign-version }}/jsign-${{ inputs.jsign-version }}.jar" -o "${{ github.workspace }}/jsign.jar"
+        echo "Downloaded Jsign ${{ inputs.jsign-version }}"
+
+    - name: Download Jsign (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Invoke-WebRequest -Uri "https://github.com/ebourg/jsign/releases/download/${{ inputs.jsign-version }}/jsign-${{ inputs.jsign-version }}.jar" -OutFile "${{ github.workspace }}/jsign.jar"
+        Write-Host "Downloaded Jsign ${{ inputs.jsign-version }}"
+
+    - name: Install Azure CLI (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        if ! command -v az &> /dev/null; then
+          curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+        fi
+
+    - name: Install Azure CLI (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        if ! command -v az &> /dev/null; then
+          brew update && brew install azure-cli
+        fi
+
+    - name: Install Azure CLI (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        if (-not (Get-Command az -ErrorAction SilentlyContinue)) {
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri https://aka.ms/installazurecliwindows -OutFile .\AzureCLI.msi
+          Start-Process msiexec.exe -Wait -ArgumentList '/I AzureCLI.msi /quiet'
+          Remove-Item .\AzureCLI.msi
+        }
+
+    - name: Authenticate to Azure (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        az login --service-principal \
+          --username "${{ inputs.azure-client-id }}" \
+          --password "${{ inputs.azure-client-secret }}" \
+          --tenant "${{ inputs.azure-tenant-id }}" \
+          --allow-no-subscriptions
+        echo "Azure authentication successful"
+
+    - name: Authenticate to Azure (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        az login --service-principal `
+          --username "${{ inputs.azure-client-id }}" `
+          --password "${{ inputs.azure-client-secret }}" `
+          --tenant "${{ inputs.azure-tenant-id }}" `
+          --allow-no-subscriptions
+        Write-Host "Azure authentication successful"
+
+    - name: Get Azure Key Vault Access Token (Linux/macOS)
+      if: runner.os != 'Windows'
+      id: get-token-unix
+      shell: bash
+      run: |
+        TOKEN=$(az account get-access-token --resource https://vault.azure.net --query accessToken -o tsv)
+        echo "::add-mask::$TOKEN"
+        echo "token=$TOKEN" >> $GITHUB_OUTPUT
+
+    - name: Get Azure Key Vault Access Token (Windows)
+      if: runner.os == 'Windows'
+      id: get-token-windows
+      shell: pwsh
+      run: |
+        $token = az account get-access-token --resource https://vault.azure.net --query accessToken -o tsv
+        Write-Host "::add-mask::$token"
+        "token=$token" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+    - name: Sign files (Linux/macOS)
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        AZURE_TOKEN: ${{ steps.get-token-unix.outputs.token }}
+        JSIGN_JAR: ${{ github.workspace }}/jsign.jar
+        KEYVAULT_URI: ${{ inputs.azure-keyvault-uri }}
+        CERT_NAME: ${{ inputs.azure-keyvault-cert-name }}
+        DIGEST_ALG: ${{ inputs.digest-algorithm }}
+        CERT_CHAIN: ${{ inputs.azure-keyvault-certchain }}
+      run: |
+        chmod +x "${{ github.action_path }}/scripts/sign-posix.sh"
+        "${{ github.action_path }}/scripts/sign-posix.sh" "${{ inputs.path }}"
+
+    - name: Sign files (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        AZURE_TOKEN: ${{ steps.get-token-windows.outputs.token }}
+        JSIGN_JAR: ${{ github.workspace }}/jsign.jar
+        KEYVAULT_URI: ${{ inputs.azure-keyvault-uri }}
+        CERT_NAME: ${{ inputs.azure-keyvault-cert-name }}
+        DIGEST_ALG: ${{ inputs.digest-algorithm }}
+        CERT_CHAIN: ${{ inputs.azure-keyvault-certchain }}
+      run: |
+        & "${{ github.action_path }}/scripts/sign-windows.ps1" -Path "${{ inputs.path }}"
+
+    - name: Cleanup (Linux/macOS)
+      if: always() && runner.os != 'Windows'
+      shell: bash
+      run: |
+        az logout || true
+        rm -f "${{ github.workspace }}/jsign.jar" || true
+        rm -f "${{ github.workspace }}/certchain.p7b" || true
+
+    - name: Cleanup (Windows)
+      if: always() && runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        az logout 2>$null
+        Remove-Item "${{ github.workspace }}/jsign.jar" -ErrorAction SilentlyContinue
+        Remove-Item "${{ github.workspace }}/certchain.p7b" -ErrorAction SilentlyContinue
