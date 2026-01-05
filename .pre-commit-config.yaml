@@ -1,0 +1,40 @@
+---
+minimum_pre_commit_version: 3.3.0
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+ci:
+  autofix_prs: false
+  autoupdate_commit_msg: 'ci: Bump pre-commit hooks'
+  autoupdate_schedule: quarterly
+  skip: [check-powershell-scripts]
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-executables-have-shebangs
+      - id: mixed-line-ending
+        args: [-f=lf]
+  - repo: https://github.com/espressif/conventional-precommit-linter
+    rev: v1.10.0
+    hooks:
+      - id: conventional-precommit-linter
+        stages: [commit-msg]
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: [tomli]
+  - repo: https://github.com/lyz-code/yamlfix/
+    rev: 1.18.0
+    hooks:
+      - id: yamlfix
+  - repo: https://github.com/espressif/esp-pwsh-check
+    rev: v1.0.1
+    hooks:
+      - id: check-powershell-scripts
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.11.0
+    hooks:
+      - id: shellcheck

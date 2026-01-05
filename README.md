@@ -21,6 +21,9 @@ This is a composite action that makes it easy to sign the files across Espressif
     <img alt="GitHub commit activity" src="https://img.shields.io/github/commit-activity/y/espressif/release-sign?logo=git&logoColor=white&label=Commits&color=purple">
     <img alt="GitHub last commit" src="https://img.shields.io/github/last-commit/espressif/release-sign?logo=git&logoColor=white&label=Last%20commit">
     <br>
+    <a href="https://results.pre-commit.ci/latest/github/espressif/release-sign/master">
+      <img alt="pre-commit.ci status" src="https://results.pre-commit.ci/badge/github/espressif/release-sign/master.svg">
+    </a>
     <a href="https://github.com/espressif/release-sign/actions/workflows/test-sign.yml">
       <img alt="GitHub workflow Tests Pytest" src="https://img.shields.io/github/actions/workflow/status/espressif/release-sign/.github%2Fworkflows%2Ftest-sign.yml?branch=master&logo=pytest&logoColor=white&label=Tests&link=https%3A%2F%2Fgithub.com%2Fespressif%2Frelease-sign%2Factions%2Fworkflows%2Ftest-sign.yml">
     </a>

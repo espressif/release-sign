@@ -111,4 +111,3 @@ elif [ -f "$SIGN_PATH" ]; then
 fi
 
 echo "=== Signing complete ==="
-
