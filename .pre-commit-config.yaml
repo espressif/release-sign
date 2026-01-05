@@ -6,8 +6,12 @@ ci:
   autofix_prs: false
   autoupdate_commit_msg: 'ci: Bump pre-commit hooks'
   autoupdate_schedule: quarterly
-  skip: [check-powershell-scripts]
+  skip: [check-powershell-scripts, shellcheck]
 repos:
+  - repo: https://github.com/lyz-code/yamlfix/
+    rev: 1.18.0
+    hooks:
+      - id: yamlfix
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
@@ -26,10 +30,6 @@ repos:
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
-  - repo: https://github.com/lyz-code/yamlfix/
-    rev: 1.18.0
-    hooks:
-      - id: yamlfix
   - repo: https://github.com/espressif/esp-pwsh-check
     rev: v1.0.1
     hooks:

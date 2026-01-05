@@ -1,0 +1,26 @@
+---
+name: 🔷 Sync to Jira
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created, edited, deleted]
+  schedule:
+    - cron: 0 * * * *
+jobs:
+  sync-to-jira:
+    name: Sync to Jira
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync to Jira
+        uses: espressif/sync-jira-actions@v1
+        with:
+          cron_job: ${{ github.event_name == 'schedule' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          JIRA_PASS: ${{ secrets.JIRA_PASS }}
+          JIRA_PROJECT: IDFGH
+          JIRA_COMPONENT: tools
+          JIRA_URL: ${{ secrets.JIRA_URL }}
+          JIRA_USER: ${{ secrets.JIRA_USER }}
