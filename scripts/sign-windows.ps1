@@ -40,7 +40,7 @@ if ($env:CERT_CHAIN) {
 
 function Sign-WindowsFile {
     param([string]$FilePath)
-    
+
     Write-Host "Signing: $FilePath"
     $args = @(
         "-jar", $JsignJar,
@@ -54,7 +54,7 @@ function Sign-WindowsFile {
         "--tsretrywait", "10",
         $FilePath
     )
-    
+
     & java $args
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to sign: $FilePath"
@@ -65,7 +65,7 @@ function Sign-WindowsFile {
 
 function Sign-JarFile {
     param([string]$FilePath)
-    
+
     Write-Host "Signing JAR: $FilePath"
     $args = @(
         "-J-cp", "-J$JsignJar",
@@ -77,7 +77,7 @@ function Sign-JarFile {
         "-storepass", $AzureToken,
         "-tsa", "http://timestamp.digicert.com"
     ) + $CertchainArg + @($FilePath, $CertName)
-    
+
     & jarsigner $args
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Failed to sign: $FilePath"
@@ -88,7 +88,7 @@ function Sign-JarFile {
 
 function Verify-File {
     param([string]$FilePath)
-    
+
     Write-Host "Verifying: $FilePath"
     if ($FilePath -like "*.jar") {
         & jarsigner -verify -verbose $FilePath 2>&1 | Out-Null
@@ -110,7 +110,7 @@ if (Test-Path $Path -PathType Container) {
             Sign-WindowsFile -FilePath $_.FullName
         }
     }
-    
+
     Get-ChildItem -Path $Path -Filter "*.jar" -Recurse -File | ForEach-Object {
         Sign-JarFile -FilePath $_.FullName
     }
@@ -137,4 +137,3 @@ if (Test-Path $Path -PathType Container) {
 }
 
 Write-Host "=== Signing complete ==="
-

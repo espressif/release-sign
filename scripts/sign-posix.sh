@@ -53,6 +53,7 @@ sign_windows_file() {
 sign_jar_file() {
   local file="$1"
   echo "Signing JAR: $file"
+  # shellcheck disable=SC2086
   jarsigner \
     -J-cp -J"$JSIGN_JAR" \
     -J--add-modules -Jjava.sql \
@@ -111,4 +112,3 @@ elif [ -f "$SIGN_PATH" ]; then
 fi
 
 echo "=== Signing complete ==="
-

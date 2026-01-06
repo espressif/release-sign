@@ -1,66 +1,62 @@
-name: 'Sign Windows files and JARs'
-description: 'Sign Windows files (.exe, .dll, .cat, .sys, .msi, .ps1, .jar) using Azure Key Vault and Jsign'
-author: 'Espressif Systems'
-
+---
+name: Sign Windows files and JARs
+description: Sign Windows files (.exe, .dll, .cat, .sys, .msi, .ps1, .jar) using Azure
+  Key Vault and Jsign
+author: Espressif Systems
 branding:
-  icon: 'lock'
-  color: 'blue'
-
+  icon: lock
+  color: blue
 inputs:
   path:
-    description: 'Path to file or directory containing files to sign'
+    description: Path to file or directory containing files to sign
     required: true
   digest-algorithm:
-    description: 'Digest algorithm to use (SHA-256, SHA-384, SHA-512)'
+    description: Digest algorithm to use (SHA-256, SHA-384, SHA-512)
     required: false
-    default: 'SHA-256'
+    default: SHA-256
   azure-client-id:
-    description: 'Azure Service Principal Client ID'
+    description: Azure Service Principal Client ID
     required: true
   azure-client-secret:
-    description: 'Azure Service Principal Client Secret'
+    description: Azure Service Principal Client Secret
     required: true
   azure-tenant-id:
-    description: 'Azure Tenant ID'
+    description: Azure Tenant ID
     required: true
   azure-keyvault-uri:
-    description: 'Azure Key Vault URI'
+    description: Azure Key Vault URI
     required: true
   azure-keyvault-cert-name:
-    description: 'Certificate name in Key Vault'
+    description: Certificate name in Key Vault
     required: true
   azure-keyvault-certchain:
-    description: 'Certificate chain (.p7b) content for JAR signing'
+    description: Certificate chain (.p7b) content for JAR signing
     required: false
     default: ''
   jsign-version:
-    description: 'Jsign version to use'
+    description: Jsign version to use
     required: false
     default: '7.4'
-
 runs:
-  using: 'composite'
+  using: composite
   steps:
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
         java-version: 17
-        distribution: 'temurin'
-
+        distribution: temurin
     - name: Download Jsign (Linux/macOS)
       if: runner.os != 'Windows'
       shell: bash
       run: |
         curl -sL "https://github.com/ebourg/jsign/releases/download/${{ inputs.jsign-version }}/jsign-${{ inputs.jsign-version }}.jar" -o "${{ github.workspace }}/jsign.jar"
         echo "Downloaded Jsign ${{ inputs.jsign-version }}"
-
     - name: Download Jsign (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
         Invoke-WebRequest -Uri "https://github.com/ebourg/jsign/releases/download/${{ inputs.jsign-version }}/jsign-${{ inputs.jsign-version }}.jar" -OutFile "${{ github.workspace }}/jsign.jar"
         Write-Host "Downloaded Jsign ${{ inputs.jsign-version }}"
-
     - name: Install Azure CLI (Linux)
       if: runner.os == 'Linux'
       shell: bash
@@ -68,7 +64,6 @@ runs:
         if ! command -v az &> /dev/null; then
           curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
         fi
-
     - name: Install Azure CLI (macOS)
       if: runner.os == 'macOS'
       shell: bash
@@ -76,7 +71,6 @@ runs:
         if ! command -v az &> /dev/null; then
           brew update && brew install azure-cli
         fi
-
     - name: Install Azure CLI (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
@@ -87,7 +81,6 @@ runs:
           Start-Process msiexec.exe -Wait -ArgumentList '/I AzureCLI.msi /quiet'
           Remove-Item .\AzureCLI.msi
         }
-
     - name: Authenticate to Azure (Linux/macOS)
       if: runner.os != 'Windows'
       shell: bash
@@ -98,7 +91,6 @@ runs:
           --tenant "${{ inputs.azure-tenant-id }}" \
           --allow-no-subscriptions
         echo "Azure authentication successful"
-
     - name: Authenticate to Azure (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
@@ -109,7 +101,6 @@ runs:
           --tenant "${{ inputs.azure-tenant-id }}" `
           --allow-no-subscriptions
         Write-Host "Azure authentication successful"
-
     - name: Get Azure Key Vault Access Token (Linux/macOS)
       if: runner.os != 'Windows'
       id: get-token-unix
@@ -118,7 +109,6 @@ runs:
         TOKEN=$(az account get-access-token --resource https://vault.azure.net --query accessToken -o tsv)
         echo "::add-mask::$TOKEN"
         echo "token=$TOKEN" >> $GITHUB_OUTPUT
-
     - name: Get Azure Key Vault Access Token (Windows)
       if: runner.os == 'Windows'
       id: get-token-windows
@@ -127,7 +117,6 @@ runs:
         $token = az account get-access-token --resource https://vault.azure.net --query accessToken -o tsv
         Write-Host "::add-mask::$token"
         "token=$token" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
     - name: Sign files (Linux/macOS)
       if: runner.os != 'Windows'
       shell: bash
@@ -141,7 +130,6 @@ runs:
       run: |
         chmod +x "${{ github.action_path }}/scripts/sign-posix.sh"
         "${{ github.action_path }}/scripts/sign-posix.sh" "${{ inputs.path }}"
-
     - name: Sign files (Windows)
       if: runner.os == 'Windows'
       shell: pwsh
@@ -154,7 +142,6 @@ runs:
         CERT_CHAIN: ${{ inputs.azure-keyvault-certchain }}
       run: |
         & "${{ github.action_path }}/scripts/sign-windows.ps1" -Path "${{ inputs.path }}"
-
     - name: Cleanup (Linux/macOS)
       if: always() && runner.os != 'Windows'
       shell: bash
@@ -162,11 +149,10 @@ runs:
         az logout || true
         rm -f "${{ github.workspace }}/jsign.jar" || true
         rm -f "${{ github.workspace }}/certchain.p7b" || true
-
     - name: Cleanup (Windows)
       if: always() && runner.os == 'Windows'
       shell: pwsh
-      run: |
+      run: |-
         az logout 2>$null
         Remove-Item "${{ github.workspace }}/jsign.jar" -ErrorAction SilentlyContinue
         Remove-Item "${{ github.workspace }}/certchain.p7b" -ErrorAction SilentlyContinue
