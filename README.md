@@ -8,6 +8,8 @@ This is a composite action that makes it easy to sign the files across Espressif
 
 - Signs Windows files
   - `.exe`, `.dll`, `.cat`, `.sys`, `.msi`, `.ps1`, `.jar` using Azure Key Vault and [Jsign](https://ebourg.github.io/jsign/).
+- On **macOS runners** only: signs and optionally notarizes macOS binaries
+  - `.app` bundles, `.pkg`, `.dmg`, and Mach-O binaries using `codesign` and `xcrun notarytool`.
 
 <!-- GitHub Badges -->
 
@@ -34,6 +36,7 @@ This is a composite action that makes it easy to sign the files across Espressif
 - [Quick Start](#quick-start)
 - [Input](#input)
 - [Full Example](#full-example)
+- [Signing on macOS](#signing-on-macos)
 - [Supported File Types](#supported-file-types)
 - [Action Inputs](#action-inputs)
 
@@ -88,16 +91,38 @@ jobs:
           path: ./build
 ```
 
+## Signing on macOS
+
+When the action runs on a **macOS** runner and the macOS inputs below are set, it will also sign (and optionally notarize) macOS artifacts under `path`:
+
+- **Signing**: uses a Developer ID certificate (`.p12`) and `codesign`; supports `.app`, `.pkg`, `.dmg`, and Mach-O binaries.
+- **Notarization**: if `notarization-username`, `notarization-password`, and `notarization-team-id` are set, artifacts are submitted to Apple with `notarytool` and stapled (for `.app`, `.pkg`, `.dmg`).
+
+Required for macOS signing: `macos-signing-identity`, `macos-certificate` (base64-encoded `.p12`), and `macos-certificate-pwd`. Map these from your repository secrets (e.g. `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PWD`). The action accepts the certificate secret in base64 in any form (single or multi-line, with or without spaces); it normalizes and decodes it automatically.
+
+Example (macOS job only):
+
+```yaml
+- name: Sign files
+  uses: espressif/release-sign@master
+  with:
+    path: ./dist
+    # Azure inputs (for Windows/JAR signing) - they may be omitted when signing only macOS binaries on a macOS runner.
+    macos-signing-identity: 'Developer ID Application: Your Name (TEAM_ID)'
+    macos-certificate: ${{ secrets.MACOS_CERTIFICATE }}
+    macos-certificate-pwd: ${{ secrets.MACOS_CERTIFICATE_PWD }}
+    macos-entitlements: app.entitlements   # optional
+    notarization-username: ${{ secrets.NOTARIZATION_USERNAME }}
+    notarization-password: ${{ secrets.NOTARIZATION_PASSWORD }}
+    notarization-team-id: ${{ secrets.NOTARIZATION_TEAM_ID }}
+```
+
 ## Supported File Types
 
-| Extension | Type |
-|-----------|------|
-| `.exe` | Executables |
-| `.dll` | Libraries |
-| `.cat`, `.sys` | Drivers |
-| `.msi`, `.cab` | Installers |
-| `.ps1` | PowerShell scripts |
-| `.jar` | Java archives (signed with jarsigner) |
+| Platform | Extensions / types | Notes |
+|----------|--------------------|-------|
+| Windows | `.exe`, `.dll`, `.cat`, `.sys`, `.msi`, `.ps1`, `.jar` | Signed with Jsign / jarsigner (Azure Key Vault) |
+| macOS   | `.app`, `.pkg`, `.dmg`, Mach-O binaries | macOS runners only; signed with `codesign`, optional notarization |
 
 ## Action Inputs
 
@@ -112,3 +137,11 @@ jobs:
 | `azure-keyvault-cert-name` | Yes | - | Certificate name in Key Vault |
 | `azure-keyvault-certchain` | No | - | Certificate chain (.p7b) for JAR signing |
 | `jsign-version` | No | `7.4` | Jsign version to use |
+| **macOS (optional)** | | | |
+| `macos-signing-identity` | No | - | Code signing identity (e.g. `Developer ID Application: Name (TEAM_ID)`). Use with `secrets.MACOS_CERTIFICATE` on macOS runners. |
+| `macos-certificate` | No | - | `.p12` certificate: base64-encoded or raw file content. Map from `secrets.MACOS_CERTIFICATE`. |
+| `macos-certificate-pwd` | No | - | Password for the `.p12`. Map from `secrets.MACOS_CERTIFICATE_PWD`. |
+| `macos-entitlements` | No | - | Path to entitlements file for `codesign` (e.g. `app.entitlements`). |
+| `notarization-username` | No | - | Apple ID for notarization. Map from `secrets.NOTARIZATION_USERNAME`. |
+| `notarization-password` | No | - | App-specific password. Map from `secrets.NOTARIZATION_PASSWORD`. |
+| `notarization-team-id` | No | - | Apple Team ID. Map from `secrets.NOTARIZATION_TEAM_ID`. |
