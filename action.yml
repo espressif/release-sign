@@ -1,7 +1,7 @@
 ---
-name: Sign Windows files and JARs
+name: Sign Windows, macOS files and JARs
 description: Sign Windows files (.exe, .dll, .cat, .sys, .msi, .ps1, .jar) using Azure
-  Key Vault and Jsign
+  Key Vault and Jsign; on macOS runners can also sign and notarize .app, .pkg, .dmg.
 author: Espressif Systems
 branding:
   icon: lock
@@ -37,6 +37,35 @@ inputs:
     description: Jsign version to use
     required: false
     default: '7.4'
+  macos-signing-identity:
+    description: macOS code signing identity (e.g. "Developer ID Application Name
+      (TEAM_ID)").
+    required: false
+    default: ''
+  macos-certificate:
+    description: Base64-encoded .p12 certificate for macOS code signing.
+    required: false
+    default: ''
+  macos-certificate-pwd:
+    description: Password for the macOS .p12 certificate.
+    required: false
+    default: ''
+  macos-entitlements:
+    description: Path to entitlements file for codesign (optional, e.g. app.entitlements).
+    required: false
+    default: ''
+  notarization-username:
+    description: Apple ID for notarization.
+    required: false
+    default: ''
+  notarization-password:
+    description: App-specific password for notarization.
+    required: false
+    default: ''
+  notarization-team-id:
+    description: Apple Team ID for notarization.
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -130,6 +159,25 @@ runs:
       run: |
         chmod +x "${{ github.action_path }}/scripts/sign-posix.sh"
         "${{ github.action_path }}/scripts/sign-posix.sh" "${{ inputs.path }}"
+    - name: Sign and notarize macOS binaries
+      if: runner.os == 'macOS' && inputs.macos-signing-identity != '' && inputs.macos-certificate
+        != '' && inputs.macos-certificate-pwd != ''
+      shell: bash
+      env:
+        MACOS_SIGNING_IDENTITY: ${{ inputs.macos-signing-identity }}
+        MACOS_CERTIFICATE_PWD: ${{ inputs.macos-certificate-pwd }}
+        MACOS_ENTITLEMENTS: ${{ inputs.macos-entitlements }}
+        NOTARIZATION_USERNAME: ${{ inputs.notarization-username }}
+        NOTARIZATION_PASSWORD: ${{ inputs.notarization-password }}
+        NOTARIZATION_TEAM_ID: ${{ inputs.notarization-team-id }}
+      run: |
+        CERT_FILE="${RUNNER_TEMP:-/tmp}/macos-certificate-$$.b64"
+        printf '%s' "${{ inputs.macos-certificate }}" > "$CERT_FILE"
+        chmod 600 "$CERT_FILE"
+        export MACOS_CERTIFICATE_FILE="$CERT_FILE"
+        chmod +x "${{ github.action_path }}/scripts/sign-macos.sh"
+        "${{ github.action_path }}/scripts/sign-macos.sh" "${{ inputs.path }}"
+        rm -f "$CERT_FILE"
     - name: Sign files (Windows)
       if: runner.os == 'Windows'
       shell: pwsh

@@ -83,3 +83,13 @@ jobs:
           Write-Host "=== Signed files ==="
           Get-ChildItem ./test/
           Write-Host "✅ Test sign success on ${{ runner.os }}!"
+  test-macos-sign-script:
+    name: Test macOS sign script
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Test sign-macos.sh (validation)
+        run: |-
+          chmod +x scripts/sign-macos.sh scripts/test-sign-macos.sh
+          ./scripts/test-sign-macos.sh
