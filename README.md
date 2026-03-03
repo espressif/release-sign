@@ -8,6 +8,8 @@ This is a composite action that makes it easy to sign the files across Espressif
 
 - Signs Windows files
   - `.exe`, `.dll`, `.cat`, `.sys`, `.msi`, `.ps1`, `.jar` using Azure Key Vault and [Jsign](https://ebourg.github.io/jsign/).
+- On **macOS runners** only: signs and optionally notarizes macOS binaries
+  - `.app` bundles, `.pkg`, `.dmg`, and Mach-O binaries using `codesign` and `xcrun notarytool`.
 
 <!-- GitHub Badges -->
 
@@ -34,11 +36,14 @@ This is a composite action that makes it easy to sign the files across Espressif
 - [Quick Start](#quick-start)
 - [Input](#input)
 - [Full Example](#full-example)
+- [Signing on macOS](#signing-on-macos)
 - [Supported File Types](#supported-file-types)
 - [Action Inputs](#action-inputs)
 
 
 ## Quick Start
+
+**Windows / JAR signing (Azure Key Vault):**
 
 ```yaml
 - uses: espressif/release-sign@master
@@ -50,6 +55,20 @@ This is a composite action that makes it easy to sign the files across Espressif
     azure-keyvault-uri: ${{ secrets.AZURE_KEYVAULT_URI }}
     azure-keyvault-cert-name: ${{ secrets.AZURE_KEYVAULT_CERT_NAME }}
 ```
+
+**macOS-only signing** (omit Azure inputs; no Azure secrets required):
+
+```yaml
+- uses: espressif/release-sign@master
+  with:
+    path: ./dist
+    macos-signing-identity: ${{ secrets.MACOS_CS_IDENTITY_ID }}
+    macos-certificate: ${{ secrets.MACOS_CS_CERTIFICATE }}
+    macos-certificate-pwd: ${{ secrets.MACOS_CS_CERTIFICATE_PWD }}
+```
+
+> [!NOTE]
+> No notarization - signing only.
 
 ## Input
 
@@ -88,16 +107,42 @@ jobs:
           path: ./build
 ```
 
+## Signing on macOS
+
+When the action runs on a **macOS** runner and the macOS inputs below are set, it will sign (and optionally notarize) macOS artifacts under `path`. **Azure inputs may be omitted** for macOS-only signing; in that case no Azure secrets are required and the Azure/Jsign steps are skipped.
+
+- **Signing**: uses a Developer ID certificate (`.p12`) and `codesign`; supports `.app`, `.pkg`, `.dmg`, and Mach-O binaries (object files `.o` and static libs `.a` are excluded as build artifacts).
+- **Notarization**: if `notarization-username`, `notarization-password`, and `notarization-team-id` are set, artifacts are submitted to Apple with `notarytool` and stapled (for `.app`, `.pkg`, `.dmg`).
+
+Required for macOS signing: `macos-signing-identity`, `macos-certificate` (base64-encoded `.p12` only), and `macos-certificate-pwd`. Map these from your repository secrets (e.g. `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PWD`). The certificate secret must be only the base64 part (single or multi-line, optional whitespace); the action normalizes and decodes it.
+
+> [!CAUTION]
+> For best notarization practices, the [recommended limit is 75 submissions per day](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow#Avoid-long-notarization-response-times-and-size-limits) (organization-wide). Notarize only release builds—packages you distribute to users.
+
+On notarization failure, the action fetches and prints Apple’s rejection log so you can see the exact rejection reasons.
+
+Example (macOS job, macOS-only signing; no Azure inputs):
+
+```yaml
+- name: Sign files
+  uses: espressif/release-sign@master
+  with:
+    path: ./dist
+    macos-signing-identity: ${{ secrets.MACOS_CS_IDENTITY_ID }}
+    macos-certificate: ${{ secrets.MACOS_CS_CERTIFICATE }}
+    macos-certificate-pwd: ${{ secrets.MACOS_CS_CERTIFICATE_PWD }}
+    macos-entitlements: app.entitlements   # optional
+    notarization-username: ${{ secrets.MACOS_CS_APPLE_ID }}
+    notarization-password: ${{ secrets.MACOS_CS_APP_SPECIFIC_PASSWORD }}
+    notarization-team-id: ${{ secrets.MACOS_CS_APPLE_TEAM_ID }}
+```
+
 ## Supported File Types
 
-| Extension | Type |
-|-----------|------|
-| `.exe` | Executables |
-| `.dll` | Libraries |
-| `.cat`, `.sys` | Drivers |
-| `.msi`, `.cab` | Installers |
-| `.ps1` | PowerShell scripts |
-| `.jar` | Java archives (signed with jarsigner) |
+| Platform | Extensions / types | Notes |
+|----------|--------------------|-------|
+| Windows | `.exe`, `.dll`, `.cat`, `.sys`, `.msi`, `.ps1`, `.jar` | Signed with Jsign / jarsigner (Azure Key Vault) |
+| macOS   | `.app`, `.pkg`, `.dmg`, Mach-O binaries | macOS runners only; signed with `codesign`, optional notarization |
 
 ## Action Inputs
 
@@ -105,10 +150,18 @@ jobs:
 |-------|----------|---------|-------------|
 | `path` | Yes | - | Path to file or directory to sign |
 | `digest-algorithm` | No | `SHA-256` | Hash algorithm (SHA-256, SHA-384, SHA-512) |
-| `azure-client-id` | Yes | - | Azure Service Principal Client ID |
-| `azure-client-secret` | Yes | - | Azure Service Principal Client Secret |
-| `azure-tenant-id` | Yes | - | Azure Tenant ID |
-| `azure-keyvault-uri` | Yes | - | Azure Key Vault URI |
-| `azure-keyvault-cert-name` | Yes | - | Certificate name in Key Vault |
+| `azure-client-id` | Yes (Azure; omit for macOS-only) | `''` | Azure Service Principal Client ID |
+| `azure-client-secret` | Yes (Azure; omit for macOS-only) | `''` | Azure Service Principal Client Secret |
+| `azure-tenant-id` | Yes (Azure; omit for macOS-only) | `''` | Azure Tenant ID |
+| `azure-keyvault-uri` | Yes (Azure; omit for macOS-only) | `''` | Azure Key Vault URI |
+| `azure-keyvault-cert-name` | Yes (Azure; omit for macOS-only) | `''` | Certificate name in Key Vault |
 | `azure-keyvault-certchain` | No | - | Certificate chain (.p7b) for JAR signing |
 | `jsign-version` | No | `7.4` | Jsign version to use |
+| **macOS** | | | |
+| `macos-signing-identity` | Yes (macOS only) | - | Code signing identity (e.g. `Developer ID Application: Name (TEAM_ID)`). |
+| `macos-certificate` | Yes (macOS only) | - | `.p12` certificate: base64-encoded. Map from `secrets.MACOS_CERTIFICATE`. |
+| `macos-certificate-pwd` | Yes (macOS only) | - | Password for the `.p12`. Map from `secrets.MACOS_CERTIFICATE_PWD`. |
+| `macos-entitlements` | No | - | Path to entitlements file for `codesign` (e.g. `app.entitlements`). |
+| `notarization-username` | Yes (macOS notarization; may be omitted) | - | Apple ID for notarization. Map from `secrets.NOTARIZATION_USERNAME`. |
+| `notarization-password` | Yes (macOS notarization; may be omitted) | - | App-specific password. Map from `secrets.NOTARIZATION_PASSWORD`. |
+| `notarization-team-id` | Yes (macOS notarization; may be omitted) | - | Apple Team ID. Map from `secrets.NOTARIZATION_TEAM_ID`. |
