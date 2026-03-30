@@ -119,20 +119,24 @@ runs:
     - name: Authenticate to Azure (Linux/macOS)
       if: runner.os != 'Windows' && inputs.azure-client-id != ''
       shell: bash
+      env:
+        AZURE_CLIENT_SECRET: ${{ inputs.azure-client-secret }}
       run: |
         az login --service-principal \
           --username "${{ inputs.azure-client-id }}" \
-          --password "${{ inputs.azure-client-secret }}" \
+          --password "$AZURE_CLIENT_SECRET" \
           --tenant "${{ inputs.azure-tenant-id }}" \
           --allow-no-subscriptions
         echo "Azure authentication successful"
     - name: Authenticate to Azure (Windows)
       if: runner.os == 'Windows' && inputs.azure-client-id != ''
       shell: pwsh
+      env:
+        AZURE_CLIENT_SECRET: ${{ inputs.azure-client-secret }}
       run: |
         az login --service-principal `
           --username "${{ inputs.azure-client-id }}" `
-          --password "${{ inputs.azure-client-secret }}" `
+          --password "$env:AZURE_CLIENT_SECRET" `
           --tenant "${{ inputs.azure-tenant-id }}" `
           --allow-no-subscriptions
         Write-Host "Azure authentication successful"
