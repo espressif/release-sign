@@ -9,7 +9,7 @@ ci:
   skip: [check-powershell-scripts, shellcheck]
 repos:
   - repo: https://github.com/lyz-code/yamlfix/
-    rev: 1.18.0
+    rev: 1.19.1
     hooks:
       - id: yamlfix
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -21,12 +21,12 @@ repos:
       - id: mixed-line-ending
         args: [-f=lf]
   - repo: https://github.com/espressif/conventional-precommit-linter
-    rev: v1.10.0
+    rev: v1.11.0
     hooks:
       - id: conventional-precommit-linter
         stages: [commit-msg]
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
