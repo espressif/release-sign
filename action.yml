@@ -154,7 +154,7 @@ runs:
       shell: pwsh
       run: |
         $token = az account get-access-token --resource https://vault.azure.net --query accessToken -o tsv
-        Write-Host "::add-mask::$token"
+        echo "::add-mask::$token"
         "token=$token" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
     - name: Sign files (Linux/macOS)
       if: runner.os != 'Windows' && inputs.azure-client-id != ''

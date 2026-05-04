@@ -111,6 +111,16 @@ jobs:
 
 When the action runs on a **macOS** runner and the macOS inputs below are set, it will sign (and optionally notarize) macOS artifacts under `path`. **Azure inputs may be omitted** for macOS-only signing; in that case no Azure secrets are required and the Azure/Jsign steps are skipped.
 
+## Certificate expiry (automated)
+
+<!-- CERT_EXPIRY_START -->
+
+- Azure Key Vault cert: expires unknown (unknown days left)
+- macOS signing cert: expires unknown (unknown days left)
+- Last updated (UTC): never
+
+<!-- CERT_EXPIRY_END -->
+
 - **Signing**: uses a Developer ID certificate (`.p12`) and `codesign`; supports `.app`, `.pkg`, `.dmg`, and Mach-O binaries (object files `.o` and static libs `.a` are excluded as build artifacts).
 - **Notarization**: if `notarization-username`, `notarization-password`, and `notarization-team-id` are set, artifacts are submitted to Apple with `notarytool` and stapled (for `.app`, `.pkg`, `.dmg`).
 

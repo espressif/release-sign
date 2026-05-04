@@ -1,0 +1,206 @@
+---
+name: Verify Certificates
+on:
+  schedule:
+    - cron: 0 7 * * 1
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-azure-keyvault-cert:
+    runs-on: ubuntu-latest
+    outputs:
+      expiry_date: ${{ steps.azure_expiry.outputs.expiry_date }}
+      days_left: ${{ steps.azure_expiry.outputs.days_left }}
+    steps:
+      - name: Verify Azure Key Vault certificate
+        id: azure_expiry
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_KEYVAULT_URI: ${{ secrets.AZURE_KEYVAULT_URI }}
+          AZURE_KEYVAULT_CERT_NAME: ${{ secrets.AZURE_KEYVAULT_CERT_NAME }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ]; then
+            echo "❌ ERROR: Azure Key Vault certificate check failed: AZURE_CLIENT_ID not configured"
+            exit 1
+          fi
+          echo "::add-mask::$AZURE_CLIENT_SECRET"
+          if ! command -v az &>/dev/null; then
+            curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+          fi
+          az login --service-principal \
+            --username "$AZURE_CLIENT_ID" \
+            --password "$AZURE_CLIENT_SECRET" \
+            --tenant "$AZURE_TENANT_ID" \
+            --allow-no-subscriptions \
+            --only-show-errors \
+            --output none
+          VAULT_NAME=$(echo "$AZURE_KEYVAULT_URI" | sed 's|https://||;s|\.vault\.azure\.net.*||')
+          CERT_JSON=$(az keyvault certificate show \
+            --vault-name "$VAULT_NAME" \
+            --name "$AZURE_KEYVAULT_CERT_NAME" \
+            --output json)
+          SUBJECT=$(echo "$CERT_JSON" | jq -r '.policy.x509CertificateProperties.subject // empty')
+          ENABLED=$(echo "$CERT_JSON" | jq -r '.attributes.enabled | tostring')
+          EXPIRES=$(echo "$CERT_JSON" | jq -r '.attributes.expires // empty')
+          if [ -z "$SUBJECT" ] || [ -z "$EXPIRES" ]; then
+            echo "❌ ERROR: unexpected certificate JSON (missing subject or expiry)"
+            az logout
+            exit 1
+          fi
+          if [ "$ENABLED" != "true" ]; then
+            echo "❌ ERROR: Azure Key Vault certificate is not enabled"
+            az logout
+            exit 1
+          fi
+          EXPIRY_EPOCH=$(date -d "$EXPIRES" +%s)
+          NOW_EPOCH=$(date +%s)
+          DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+          EXPIRY_DATE=$(date -d "$EXPIRES" +%Y-%m-%d)
+          echo "expiry_date=$EXPIRY_DATE" >> "$GITHUB_OUTPUT"
+          echo "days_left=$DAYS_LEFT" >> "$GITHUB_OUTPUT"
+          if [ "$DAYS_LEFT" -lt 0 ]; then
+            echo "❌ ERROR: Azure Key Vault cert has expired (expired $EXPIRY_DATE)"
+            az logout
+            exit 1
+          elif [ "$DAYS_LEFT" -lt 30 ]; then
+            echo "::warning title=⚠️ WARNING: Azure Key Vault cert expires in $DAYS_LEFT days ($EXPIRY_DATE)"
+            az logout
+            exit 1
+          else
+            echo "✅ Azure cert expires in $DAYS_LEFT days ($EXPIRY_DATE)"
+          fi
+          az logout
+  verify-macos-p12-cert:
+    runs-on: macos-latest
+    outputs:
+      expiry_date: ${{ steps.macos_expiry.outputs.expiry_date }}
+      days_left: ${{ steps.macos_expiry.outputs.days_left }}
+    steps:
+      - name: Verify macOS signing certificate (P12)
+        id: macos_expiry
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CS_CERTIFICATE || secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CS_CERTIFICATE_PWD || secrets.MACOS_CERTIFICATE_PWD }}
+        run: |-
+          if [ -z "$MACOS_CERTIFICATE" ]; then
+            echo "❌ ERROR: No macOS P12 secret in this job"
+            exit 1
+          fi
+          _cert_tmpdir="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+          CERT_TMP=$(TMPDIR="$_cert_tmpdir" mktemp -t verify_cert.XXXXXX)
+          # Match scripts/sign-macos.sh: printf (not echo), strip whitespace, base64 --decode then -D fallback
+          _cert_b64=$(printf '%s' "$MACOS_CERTIFICATE" | tr -d ' \r\n\t')
+          printf '%s' "$_cert_b64" | base64 --decode > "$CERT_TMP" 2>/dev/null || printf '%s' "$_cert_b64" | base64 -D > "$CERT_TMP" 2>/dev/null || true
+          if [ ! -s "$CERT_TMP" ]; then
+            echo "❌ ERROR: MACOS_CERTIFICATE could not be base64-decoded"
+            rm -f "$CERT_TMP"
+            exit 1
+          fi
+          _pwd_trim=$(printf '%s' "$MACOS_CERTIFICATE_PWD" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          export MACOS_CERTIFICATE_PWD="$_pwd_trim"
+          CERT_INFO=$(openssl pkcs12 \
+            -in "$CERT_TMP" \
+            -nokeys \
+            -passin env:MACOS_CERTIFICATE_PWD \
+            2>/dev/null | openssl x509 -noout -enddate)
+          OPENSSL_EXIT=${PIPESTATUS[0]}
+          rm -f "$CERT_TMP"
+          unset MACOS_CERTIFICATE_PWD
+          if [ "$OPENSSL_EXIT" -ne 0 ]; then
+            echo "❌ ERROR: Failed to decode macOS certificate (openssl exit $OPENSSL_EXIT). Check MACOS_CERTIFICATE and MACOS_CERTIFICATE_PWD"
+            exit 1
+          fi
+          NOT_AFTER=$(echo "$CERT_INFO" | sed -n 's/^notAfter=//p')
+          if [ -z "$NOT_AFTER" ]; then
+            echo "❌ ERROR: could not parse notAfter field from certificate info"
+            exit 1
+          fi
+          EXPIRY_EPOCH=$(python3 -c "from email.utils import parsedate_to_datetime; import sys; print(int(parsedate_to_datetime(sys.argv[1]).timestamp()))" "$NOT_AFTER")
+          NOW_EPOCH=$(date +%s)
+          DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+          EXPIRY_DATE=$(python3 -c "from email.utils import parsedate_to_datetime; import sys; print(parsedate_to_datetime(sys.argv[1]).strftime('%Y-%m-%d'))" "$NOT_AFTER")
+          echo "expiry_date=$EXPIRY_DATE" >> "$GITHUB_OUTPUT"
+          echo "days_left=$DAYS_LEFT" >> "$GITHUB_OUTPUT"
+          if [ "$DAYS_LEFT" -lt 0 ]; then
+            echo "❌ ERROR: macOS signing cert has expired ($EXPIRY_DATE)"
+            exit 1
+          elif [ "$DAYS_LEFT" -lt 30 ]; then
+            echo "::warning title=⚠️ WARNING: macOS cert expires in $DAYS_LEFT days ($EXPIRY_DATE)"
+            exit 1
+          else
+            echo "✅ macOS cert expires in $DAYS_LEFT days ($EXPIRY_DATE)"
+          fi
+  update-readme-expiry-pr:
+    name: Update README certificate expiry (PR)
+    needs: [verify-azure-keyvault-cert, verify-macos-p12-cert]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' && github.event.schedule == '0 7 * * 1'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Gate to every 2 weeks (ISO week parity)
+        id: gate
+        run: |
+          WEEK=$(date +%V)
+          if [ $((10#$WEEK % 2)) -ne 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping README update this week (ISO week $WEEK is odd)."
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Proceeding with README update (ISO week $WEEK is even)."
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@v4
+      - name: Update README marker block
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          AZURE_EXPIRY_DATE: ${{ needs.verify-azure-keyvault-cert.outputs.expiry_date }}
+          AZURE_DAYS_LEFT: ${{ needs.verify-azure-keyvault-cert.outputs.days_left }}
+          MACOS_EXPIRY_DATE: ${{ needs.verify-macos-p12-cert.outputs.expiry_date }}
+          MACOS_DAYS_LEFT: ${{ needs.verify-macos-p12-cert.outputs.days_left }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from datetime import datetime, timezone
+          readme_path = "README.md"
+          start = "<!-- CERT_EXPIRY_START -->"
+          end = "<!-- CERT_EXPIRY_END -->"
+          with open(readme_path, "r", encoding="utf-8") as f:
+            s = f.read()
+          if start not in s or end not in s:
+            raise SystemExit(f"README markers not found: {start} / {end}")
+          updated = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+          block = "\n".join(
+            [
+              start,
+              "",
+              f"- Azure Key Vault cert: expires {os.environ['AZURE_EXPIRY_DATE']} ({os.environ['AZURE_DAYS_LEFT']} days left)",
+              f"- macOS signing cert: expires {os.environ['MACOS_EXPIRY_DATE']} ({os.environ['MACOS_DAYS_LEFT']} days left)",
+              f"- Last updated (UTC): {updated}",
+              "",
+              end,
+            ]
+          )
+          before = s.split(start, 1)[0].rstrip("\n")
+          after = s.split(end, 1)[1].lstrip("\n")
+          out = before + "\n" + block + "\n" + after
+          with open(readme_path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(out)
+          PY
+      - name: Create/update PR
+        if: steps.gate.outputs.skip != 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: automation/update-cert-expiry-readme
+          delete-branch: true
+          commit-message: 'docs: Updated certificate expiry summary'
+          title: 'docs: Updated certificate expiry summary'
+          body: |-
+            Automated update of certificate expiry information in `README.md`.
+            - Trigger: scheduled job
+            - Source: `verify-certificates.yml` certificate verification outputs
