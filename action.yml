@@ -72,7 +72,8 @@ inputs:
     required: false
     default: ''
   notarization-timeout:
-    description: Notarization wait timeout passed to notarytool (for example, 600 or 60m).
+    description: Notarization wait timeout passed to notarytool (for example, 600
+      or 60m).
     required: false
     default: '600'
 runs:
