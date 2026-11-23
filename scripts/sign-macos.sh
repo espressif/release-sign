@@ -224,30 +224,22 @@ notarize_submit() {
   set +e
   local out
   out=$(mktemp -t notary.XXXXXX)
-  xcrun notarytool submit "$to_submit" \
-    --keychain-profile "$NOTARY_PROFILE_NAME" \
-    --keychain "$NOTARY_KEYCHAIN_PATH" \
-    --wait --timeout "$NOTARIZATION_TIMEOUT" >"$out" 2>&1
+  xcrun notarytool submit "$to_submit" --keychain-profile "$NOTARY_PROFILE_NAME" --keychain "$NOTARY_KEYCHAIN_PATH" --wait --timeout "$NOTARIZATION_TIMEOUT" 2>&1 | tee "$out"
   local status=$?
-  set -e
-  cat "$out"
-  local id
-  id=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$out" | head -1 || true)
   [ -n "$zip_file" ] && [ -f "$zip_file" ] && rm -f "$zip_file"
-  if [ "$status" -ne 0 ] || ! grep -q "status: Accepted" "$out"; then
-    echo "Notarization was not accepted for $item (notarytool exit $status)." >&2
+  if [ "$status" -ne 0 ]; then
+    local id
+    id=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$out" | head -1)
     rm -f "$out"
     if [ -n "$id" ]; then
-      echo "Apple rejection log for $id:" >&2
-      xcrun notarytool log "$id" \
-        --keychain-profile "$NOTARY_PROFILE_NAME" \
-        --keychain "$NOTARY_KEYCHAIN_PATH" >&2 || true
+      echo "Notarization failed (submission ID: $id). Apple rejection log:" >&2
+      xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE_NAME" --keychain "$NOTARY_KEYCHAIN_PATH" >&2
       echo "To re-fetch this log: xcrun notarytool log $id --keychain-profile $NOTARY_PROFILE_NAME --keychain $NOTARY_KEYCHAIN_PATH" >&2
     fi
-    EXIT_CODE=1
-    exit 1
+    EXIT_CODE=$status; set -e; exit $status
   fi
   rm -f "$out"
+  set -e
   if [[ "$item" == *.app ]] || [[ "$item" == *.pkg ]] || [[ "$item" == *.dmg ]]; then
     xcrun stapler staple "$item"
   fi
