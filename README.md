@@ -112,7 +112,7 @@ jobs:
 When the action runs on a **macOS** runner and the macOS inputs below are set, it will sign (and optionally notarize) macOS artifacts under `path`. **Azure inputs may be omitted** for macOS-only signing; in that case no Azure secrets are required and the Azure/Jsign steps are skipped.
 
 - **Signing**: uses a Developer ID certificate (`.p12`) and `codesign`; supports `.app`, `.pkg`, `.dmg`, and Mach-O binaries (object files `.o` and static libs `.a` are excluded as build artifacts).
-- **Notarization**: if `notarization-username`, `notarization-password`, and `notarization-team-id` are set, artifacts are submitted to Apple with `notarytool` and stapled (for `.app`, `.pkg`, `.dmg`).
+- **Notarization**: if `notarization-username`, `notarization-password`, and `notarization-team-id` are set, artifacts are submitted to Apple with `notarytool` and stapled (for `.app`, `.pkg`, `.dmg`). Use `notarization-timeout` to increase the wait for artifacts that take longer than the default 600 seconds.
 
 Required for macOS signing: `macos-signing-identity`, `macos-certificate` (base64-encoded `.p12` only), and `macos-certificate-pwd`. Map these from your repository secrets (e.g. `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PWD`). The certificate secret must be only the base64 part (single or multi-line, optional whitespace); the action normalizes and decodes it.
 
@@ -165,3 +165,4 @@ Example (macOS job, macOS-only signing; no Azure inputs):
 | `notarization-username` | Yes (macOS notarization; may be omitted) | - | Apple ID for notarization. Map from `secrets.NOTARIZATION_USERNAME`. |
 | `notarization-password` | Yes (macOS notarization; may be omitted) | - | App-specific password. Map from `secrets.NOTARIZATION_PASSWORD`. |
 | `notarization-team-id` | Yes (macOS notarization; may be omitted) | - | Apple Team ID. Map from `secrets.NOTARIZATION_TEAM_ID`. |
+| `notarization-timeout` | No | `600` | Maximum wait passed to `notarytool` (seconds or a duration such as `60m`). |
