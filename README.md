@@ -165,3 +165,4 @@ Example (macOS job, macOS-only signing; no Azure inputs):
 | `notarization-username` | Yes (macOS notarization; may be omitted) | - | Apple ID for notarization. Map from `secrets.NOTARIZATION_USERNAME`. |
 | `notarization-password` | Yes (macOS notarization; may be omitted) | - | App-specific password. Map from `secrets.NOTARIZATION_PASSWORD`. |
 | `notarization-team-id` | Yes (macOS notarization; may be omitted) | - | Apple Team ID. Map from `secrets.NOTARIZATION_TEAM_ID`. |
+| `notarization-timeout` | No | `600` | Maximum wait passed to `notarytool` (seconds or a duration such as `60m`). |

@@ -14,6 +14,7 @@ fi
 NOTARY_KEYCHAIN_NAME="notary.keychain"
 NOTARY_KEYCHAIN_PATH="${HOME}/Library/Keychains/${NOTARY_KEYCHAIN_NAME}-db"
 NOTARY_PROFILE_NAME="release-sign-notarytool-profile"
+NOTARIZATION_TIMEOUT="${NOTARIZATION_TIMEOUT:-600}"
 
 # Track the default keychain so we can restore it during cleanup if we change it.
 PREV_DEFAULT_KEYCHAIN="$(security default-keychain 2>/dev/null || echo "")"
@@ -223,7 +224,7 @@ notarize_submit() {
   set +e
   local out
   out=$(mktemp -t notary.XXXXXX)
-  xcrun notarytool submit "$to_submit" --keychain-profile "$NOTARY_PROFILE_NAME" --keychain "$NOTARY_KEYCHAIN_PATH" --wait --timeout 600 2>&1 | tee "$out"
+  xcrun notarytool submit "$to_submit" --keychain-profile "$NOTARY_PROFILE_NAME" --keychain "$NOTARY_KEYCHAIN_PATH" --wait --timeout "$NOTARIZATION_TIMEOUT" 2>&1 | tee "$out"
   local status=$?
   [ -n "$zip_file" ] && [ -f "$zip_file" ] && rm -f "$zip_file"
   if [ "$status" -ne 0 ]; then

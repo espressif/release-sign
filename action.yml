@@ -71,6 +71,11 @@ inputs:
     description: Apple Team ID for notarization.
     required: false
     default: ''
+  notarization-timeout:
+    description: Notarization wait timeout passed to notarytool (for example, 600
+      or 60m).
+    required: false
+    default: '600'
 runs:
   using: composite
   steps:
@@ -180,6 +185,7 @@ runs:
         NOTARIZATION_USERNAME: ${{ inputs.notarization-username }}
         NOTARIZATION_PASSWORD: ${{ inputs.notarization-password }}
         NOTARIZATION_TEAM_ID: ${{ inputs.notarization-team-id }}
+        NOTARIZATION_TIMEOUT: ${{ inputs.notarization-timeout }}
       run: |
         "${{ github.action_path }}/scripts/sign-macos.sh" "${{ inputs.path }}"
     - name: Sign files (Windows)
